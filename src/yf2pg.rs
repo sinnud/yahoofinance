@@ -2,6 +2,7 @@
 // store data into postgres database
 use yahoo_finance::{history, Interval};
 // extern crate chrono;
+use chrono::Utc;
 // use chrono::{Duration, Local};
 // macros to convert data type into string slice for cat
 macro_rules! pg_num2str{
@@ -44,19 +45,46 @@ pub fn yf_hist(stockname: &str) -> Vec<String> {
 }
 
 extern crate postgres;
-use postgres::{Client, NoTls};
-use std::io::Write;
+//use postgres::{Client, NoTls};
+//use std::io::Write;
+//use crate::pg_utils::pg_conn_conf;
+//use crate::pg_utils::pg_conn;
+use crate::pg_utils::PgUtils;
 pub fn hist2pg(hist : &mut Vec<String>) {
-    // println!("Length of hist: {}", hist.len());
-    let constr = "host=localhost user=rust password=rust";
-    let mut client = Client::connect(constr, NoTls).unwrap();
+    let pu=PgUtils::default();
+    let mut client = pu.pg_conn();
     let pg_skm="yahoof";
+    if !pu.pg_skm_exist(&mut client, pg_skm.to_string()){
+	println!("Schema {} does NOT exist!!!", pg_skm);
+	std::process::exit(1);
+    }
     let pg_tbl="yf_hist";
-    let query =["COPY ",pg_skm,".",pg_tbl," FROM stdin"].concat();
-    let thisqry: &str = &query; // convert string to string slice
-    let mut writer = client.copy_in(thisqry).unwrap();
-    let data=hist.join("\n");
-    writer.write_all(data.as_bytes()).unwrap();
-    writer.finish().unwrap();
+    if !pu.pg_tbl_exist(&mut client
+			, pg_skm.to_string()
+			, pg_tbl.to_string()
+                       ){
+	println!("Table {}.{} does NOT exist!!!", pg_skm, pg_tbl);
+	let tbl_str="yf_stockname text, stock_dt timestamp, open numeric(14, 2), high numeric(14, 2), low numeric(14, 2), close numeric(14, 2), volumn bigint, inserteddatetime timestamp".to_string();
+	pu.pg_create_tbl(&mut client, pg_skm.to_string(), pg_tbl.to_string()
+			 , tbl_str);
+    }
+    pu.pg_truncate_tbl(&mut client
+			, pg_skm.to_string()
+			, pg_tbl.to_string()
+    );
+    //let data=hist.join("\n");
+    let mut rst = Vec::new();
+    for bar in hist{
+	let mut elm: String = String::new();
+	let dt = Utc::now();pg_ts2str!(dt, dt_str);
+	elm.push_str(bar);elm.push('\t');elm.push_str(dt_str);
+	rst.push(elm);
+    }
+    let data=rst.join("\n");
+    pu.pg_import_data2tbl(&mut client
+		       , pg_skm.to_string()
+		       , pg_tbl.to_string()
+		       , data
+    );
 }
  

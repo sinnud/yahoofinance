@@ -1,5 +1,6 @@
 // import yahoo finance data into postgres database
 
+mod pg_utils;
 mod yf2pg;
 use yf2pg::{yf_hist, hist2pg};
 fn main() {
